@@ -2,7 +2,6 @@
 #include <iostream>
 #include <sys/types.h>
 
-
 #include <map>
 #include <string.h>
 
@@ -21,14 +20,14 @@ int main(int argc, char*argv[]) {
 
     printf("Application started\n");
 
-    int send_bc_sock, list_bc_sock, status, sinlen;
+    int bc_sock, status, sinlen;
     struct sockaddr_in sock_in;
     int enable = 1;
 
     sinlen = sizeof (struct sockaddr_in);
     memset(&sock_in, 0, sinlen);
 
-    map<in_addr_t, long> Map; //map for IP;time preserving
+    map<in_addr_t, long> Map; //map for (IP;time) preserving
     map<in_addr_t, long>::iterator it;
 
     /*TCP almost always uses SOCK_STREAM and UDP uses SOCK_DGRAM.
@@ -52,54 +51,30 @@ int main(int argc, char*argv[]) {
         weight (less computer and network stress).
      */
 
-    /*to send broadcast datagrams*/
-    send_bc_sock = socket(PF_INET, SOCK_DGRAM, 0); //PF_INET = AF_INET
-
-    sock_in.sin_addr.s_addr = htonl(INADDR_ANY); ///////////////
-    sock_in.sin_port = htons(DEF_SEND_BC_PORT);
-    sock_in.sin_family = PF_INET;
-
-    status = bind(send_bc_sock, (struct sockaddr *) &sock_in, sinlen);
-    if (status != 0) {
-        close(send_bc_sock);
-        error("Bind(): ", errno);
-    }
-
-
-    status = setsockopt(send_bc_sock, SOL_SOCKET, SO_BROADCAST, &enable, sizeof (enable)); /*on the broadcast function on send_bc_sock*/
-    if (status != 0) {
-        close(send_bc_sock);
-        error("Setsockopt(): ", errno);
-    }
-
-    /*to listen incoming broadcast datagrams*/
-    list_bc_sock = socket(PF_INET, SOCK_DGRAM, 0);
+    /*to send and listen broadcast datagrams*/
+    bc_sock = socket(PF_INET, SOCK_DGRAM, 0); //PF_INET = AF_INET
 
     sock_in.sin_addr.s_addr = htonl(INADDR_ANY);
-    sock_in.sin_port = htons(DEF_LIST_BC_PORT);
+    sock_in.sin_port = htons(DEF_BC_PORT);
     sock_in.sin_family = PF_INET;
 
-    status = bind(list_bc_sock, (struct sockaddr *) &sock_in, sinlen);
+    status = bind(bc_sock, (struct sockaddr *) &sock_in, sinlen);
     if (status != 0) {
-        close(list_bc_sock);
-        close(send_bc_sock);
+        close(bc_sock);
         error("Bind(): ", errno);
     }
 
-    status = setsockopt(list_bc_sock, SOL_SOCKET, SO_BROADCAST, &enable, sizeof (enable)); /*on the broadcast function on list_bc_sock*/
+
+    status = setsockopt(bc_sock, SOL_SOCKET, SO_BROADCAST, &enable, sizeof (enable)); /*on the broadcast function on send_bc_sock*/
     if (status != 0) {
-        close(list_bc_sock);
-        close(send_bc_sock);
+        close(bc_sock);
         error("Setsockopt(): ", errno);
     }
 
-    /* -1 = 255.255.255.255 this is a BROADCAST address,
-       a local broadcast address could also be used.
-       you can comput the local broadcat using NIC address and its NETMASK 
-     */
+    /* -1 = 255.255.255.255 this is a BROADCAST address*/
 
-    sock_in.sin_addr.s_addr = htonl(-1); /* send message to IP = 255.255.255.255 */
-    sock_in.sin_port = htons(DEF_LIST_BC_PORT); /* and corresponding port number */
+    sock_in.sin_addr.s_addr = htonl(-1); 
+    sock_in.sin_port = htons(DEF_BC_PORT);
     sock_in.sin_family = PF_INET;
 
     sockaddr_in client_addr;
@@ -115,10 +90,11 @@ int main(int argc, char*argv[]) {
 
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
+    int nbytes = sendto(bc_sock, outcom_msg, sizeof (outcom_msg), 0, (struct sockaddr *) &sock_in, sinlen);
+    
     while (true) {
 
-        int nbytes = sendto(send_bc_sock, outcom_msg, sizeof (outcom_msg), 0, (struct sockaddr *) &sock_in, sinlen);
-
+        
         if (nbytes < 0) {
             perror("Recvfrom(): ");
             fprintf(stderr, "Terminating\n");
@@ -126,12 +102,12 @@ int main(int argc, char*argv[]) {
         }
 
         FD_ZERO(&readfds);
-        FD_SET(list_bc_sock, &readfds);
+        FD_SET(bc_sock, &readfds);
 
         tv.tv_sec = 1;
         tv.tv_usec = 0;
 
-        int rv = select(list_bc_sock + 1, &readfds, NULL, NULL, &tv);
+        int rv = select(bc_sock + 1, &readfds, NULL, NULL, &tv);
 
         if (rv < 0) {
             perror("Select(): ");
@@ -141,7 +117,7 @@ int main(int argc, char*argv[]) {
 
 
         if (rv == 1) {
-            int nbytes = recvfrom(list_bc_sock, &incom_msg, sizeof (incom_msg) - 1, 0, (struct sockaddr *) & client_addr, &client_addr_size);
+            int nbytes = recvfrom(bc_sock, &incom_msg, sizeof (incom_msg) - 1, 0, (struct sockaddr *) & client_addr, &client_addr_size);
             clock_gettime(CLOCK_MONOTONIC, &recv_time);
 
             if (nbytes < 0) {
@@ -168,8 +144,8 @@ int main(int argc, char*argv[]) {
 
 
         /*every 5 sec sends broadcast msg and cheacks if some client has become diseabled*/
-        if (end_time.tv_sec - start_time.tv_sec > 5) {
-            int nbytes = sendto(send_bc_sock, outcom_msg, sizeof (outcom_msg), 0, (struct sockaddr *) &sock_in, sinlen);
+        if (end_time.tv_sec - start_time.tv_sec > 2) {
+            int nbytes = sendto(bc_sock, outcom_msg, sizeof (outcom_msg), 0, (struct sockaddr *) &sock_in, sinlen);
 
             if (nbytes < 0) {
                 perror("Recvfrom(): ");
@@ -178,19 +154,19 @@ int main(int argc, char*argv[]) {
             }
 
             for (it = Map.begin(); it != Map.end(); it++) {
-                if (end_time.tv_sec - it->second > 10) {
+                if (end_time.tv_sec - it->second > 5) {
                     Map.erase(it);
-                    printf("One instance went down. Total: %u\n", Map.size());
+                    printf("One instance went down. Total: %ld\n", Map.size());
                 }
             }
-            printf("Total instances: %u\n", Map.size());
+            printf("Total instances: %ld\n", Map.size());
             clock_gettime(CLOCK_MONOTONIC, &start_time);
         }
 
     }
 
-    shutdown(send_bc_sock, 2);
-    shutdown(list_bc_sock, 2);
-    close(send_bc_sock);
-    close(list_bc_sock);
+    shutdown(bc_sock, 2);
+    shutdown(bc_sock, 2);
+    close(bc_sock);
+    close(bc_sock);
 }
