@@ -1,11 +1,16 @@
 #include "opt.h"
 
+#define SUCCESS 0
+#define FAIL -1
+
 bool root = true;
 bool terminating_state = false;
-int service_info_offset = SIO;      /*Зарезервированное место в пакете для типа сообщения и id*/
+int service_info_offset = SIO; /*Зарезервированное место в пакете для типа сообщения и id*/
 
 std::vector<node> neighbors;
 std::vector<message> msgs;
+
+int queue_overload_processing();
 
 void terminating(int sig) {
     fprintf(stderr, "\nI'am dying...\n");
@@ -27,6 +32,10 @@ uint create_conReq_msg() {
 
     new_msg.package[0] = CONNECT_REQUEST;
     memcpy((new_msg.package + 1), &new_msg.id, sizeof (new_msg.id));
+
+    /*Если очередь переполнена по возможности пытаемся освободить место*/
+    queue_overload_processing();
+
     msgs.push_back(new_msg);
 
     return new_msg.id;
@@ -50,6 +59,9 @@ uint create_connectTo_msg(int ip, int port) { //Сообщение-команд�
     memcpy((new_msg.package + service_info_offset), &ip, sizeof (ip));
     memcpy((new_msg.package + service_info_offset + sizeof (ip)), &port, sizeof (port));
 
+    /*Если очередь переполнена по возможности пытаемся освободить место*/
+    queue_overload_processing();
+
     msgs.push_back(new_msg);
 
     return new_msg.id;
@@ -72,6 +84,10 @@ uint create_disconnect_msg(bool new_root) {
     new_msg.package[0] = DISCONNECT;
     memcpy((new_msg.package + 1), &new_msg.id, sizeof (new_msg.id));
     memcpy((new_msg.package + service_info_offset), &new_root, sizeof (new_root));
+
+    /*Если очередь переполнена по возможности пытаемся освободить место*/
+    queue_overload_processing();
+
     msgs.push_back(new_msg);
 
     return new_msg.id;
@@ -92,6 +108,10 @@ uint create_ack(uint msg_id) {
 
     new_msg.package[0] = ACK;
     memcpy((new_msg.package + 1), &msg_id, sizeof (new_msg.id));
+
+    /*Если очередь переполнена по возможности пытаемся освободить место*/
+    queue_overload_processing();
+
     msgs.push_back(new_msg);
 
     return new_msg.id;
@@ -113,9 +133,15 @@ uint create_msg(char * content) {
     new_msg.package[0] = MSG;
     memcpy((new_msg.package + 1), &new_msg.id, sizeof (new_msg.id));
     memcpy((new_msg.package + service_info_offset), content, (MSG_SIZE - service_info_offset));
-    msgs.push_back(new_msg);
 
-    return new_msg.id;
+    /*Если очередь переполнена по возможности пытаемся освободить место*/
+    if (queue_overload_processing() == SUCCESS) {
+        msgs.push_back(new_msg);
+        return new_msg.id;
+    } else {
+        free(new_msg.package);
+        return 0;
+    }
 }
 
 node create_node(int ip, int port, bool is_parent) {
@@ -219,7 +245,7 @@ int main(int argc, char * argv[]) {
 
     fprintf(stderr, "           --Chat session started--\n");
     fprintf(stderr, "Port: %d\nRoot: %d\n", my_addr.sin_port, root);
-    fprintf(stderr, "Nickname: %s\n", outgoing_msg);
+    fprintf(stderr, "Nickname: %s\n\n", outgoing_msg);
 
     outgoing_msg[nicklen] = ':';
     uint out_msg_prefix_len = strlen(outgoing_msg);
@@ -321,12 +347,13 @@ int main(int argc, char * argv[]) {
             /**********************/
 
             if (FD_ISSET(sock, &read_fds)) {
-                
-                for (int i = 0; i < 1; i++) {   /*Небольшой костыль...*/
-                    
+
+                for (int i = 0; i < 1; i++) { /*Небольшой костыль...*/
+
                     if (incoming_msg.package) {
-                        
+
                         addrlen = sizeof (addr);
+
                         ret = recvfrom(sock, incoming_msg.package, MSG_SIZE, 0, (sockaddr *) & addr, &addrlen);
 
                         if (ret < 0) {
@@ -335,7 +362,7 @@ int main(int argc, char * argv[]) {
                         }
 
                         int attempt_to_get_msg = rand() % 100;
-                        fprintf(stderr, "percent_of_losses = %d, rand = %d\n", percent_of_losses, attempt_to_get_msg);
+                        //fprintf(stderr, "percent_of_losses = %d, rand = %d\n", percent_of_losses, attempt_to_get_msg);
 
                         /*Проверка "потери" датаграммы*/
                         if (attempt_to_get_msg >= percent_of_losses) {
@@ -360,7 +387,7 @@ int main(int argc, char * argv[]) {
                                     /*Если запрос пришел тогда, когда мы уже завершаем работу - не обрабатываем*/
                                     if (terminating_state) break;
 
-                                    fprintf(stderr, "CONNECT_REQUEST... %d\n", addr.sin_port);
+                                    //fprintf(stderr, "CONNECT_REQUEST from %d\n", addr.sin_port);
 
                                     uint id;
                                     memcpy(&id, incoming_msg.package + 1, sizeof (id));
@@ -368,6 +395,7 @@ int main(int argc, char * argv[]) {
                                     /*Нода, желающая подключиться порой успевает послать больше одного запроса на подключение*/
                                     if (sender_idx != -1) {
                                         send_info sinfo;
+
                                         sinfo.msg_id = create_ack(id);
                                         sinfo.attempt = 1;
                                         sinfo.last_attempt = 0;
@@ -378,6 +406,7 @@ int main(int argc, char * argv[]) {
 
                                     node neighbor = create_node(addr.sin_addr.s_addr, addr.sin_port, false);
                                     send_info sinfo;
+
                                     sinfo.msg_id = create_ack(id);
                                     sinfo.attempt = 1;
                                     sinfo.last_attempt = 0;
@@ -412,7 +441,7 @@ int main(int argc, char * argv[]) {
                                     memcpy(&ip, (incoming_msg.package + service_info_offset), sizeof (ip));
                                     memcpy(&port, (incoming_msg.package + service_info_offset + sizeof (ip)), sizeof (port));
 
-                                    fprintf(stderr, "CONNECT_TO... %d\n", port);
+                                    //fprintf(stderr, "CONNECT_TO from %d\n", port);
 
                                     node new_node = create_node(ip, port, false);
                                     root = true;
@@ -432,7 +461,7 @@ int main(int argc, char * argv[]) {
                                     /*Непонятно от кого подтверждения не принимаем*/
                                     if (sender_idx == -1) break;
 
-                                    fprintf(stderr, "ACK...%d\n", addr.sin_port);
+                                    //fprintf(stderr, "ACK from %d\n", addr.sin_port);
 
                                     uint id;
                                     memcpy(&id, (incoming_msg.package + 1), sizeof (id));
@@ -474,7 +503,7 @@ int main(int argc, char * argv[]) {
                                 {
                                     if ((sender_idx == -1) || terminating_state) break;
 
-                                    fprintf(stderr, "\n%s\n", (incoming_msg.package + service_info_offset));
+                                    fprintf(stderr, "%s\n", (incoming_msg.package + service_info_offset));
 
                                     message to_resend;
                                     to_resend.package = (char *) calloc(sizeof (char), MSG_SIZE);
@@ -511,7 +540,7 @@ int main(int argc, char * argv[]) {
                                 case DISCONNECT:
                                 {
                                     if (sender_idx == -1) break;
-                                    fprintf(stderr, "DISCONNECT...%d\n", addr.sin_port);
+                                    //fprintf(stderr, "DISCONNECT from %d\n", addr.sin_port);
 
                                     uint id;
                                     memcpy(&id, incoming_msg.package + 1, sizeof (id));
@@ -601,8 +630,6 @@ int main(int argc, char * argv[]) {
                         ssize_t ret = sendto(sock, msgs[i].package, MSG_SIZE, 0, (struct sockaddr *) &(neighbors[j].addr), addrlen);
                         if (ret != MSG_SIZE) continue;
 
-                        //fprintf(stderr, "Sending %d to %d...\n", *msgs[i].buf, neighbors[j].addr.sin_port);
-
                         /*Если мы отправили */
                         if (msgs[i].package[0] == ACK) {
                             neighbors[j].msgs_to_send.erase(neighbors[j].msgs_to_send.begin() + k);
@@ -653,26 +680,6 @@ int main(int argc, char * argv[]) {
         }
 
 
-        /*********************************************/
-        /* Обработка переполнениия очереди сообщений */
-        /*********************************************/
-
-        if (msgs.size() > MSG_QUEUE_MAX_SIZE) {
-
-            for (int j = 0; j < neighbors.size(); j++) {
-                for (int k = 0; k < neighbors[j].msgs_to_send.size(); k++) {
-                    /*Если в очереди соседа нашелся id первого сообщения из общей очереди сообщений - убираем его*/
-                    if ((msgs[0].id == neighbors[j].msgs_to_send[k].msg_id)) {
-                        neighbors[j].msgs_to_send.erase(neighbors[j].msgs_to_send.begin() + k);
-                        break;
-                    }
-                }
-            }
-
-            /*Удаляем первое сообщение из очереди*/
-            free(msgs[0].package);
-            msgs.erase(msgs.begin());
-        }
 
 
     }
@@ -681,4 +688,43 @@ int main(int argc, char * argv[]) {
     free(outgoing_msg);
 
     return 0;
+}
+
+
+
+
+/*********************************************/
+/* Обработка переполнениия очереди сообщений */
+
+/*********************************************/
+
+int queue_overload_processing() {
+
+    for (int i = 0; i < msgs.size(); i++) {
+
+        /*Если в пределах нормы - выходим из цикла*/
+        if (msgs.size() < MSG_QUEUE_MAX_SIZE) return SUCCESS;
+
+        /*Если не сервисное сообщение можем удалить*/
+        if (msgs[i].package[0] == MSG) {
+
+            for (int j = 0; j < neighbors.size(); j++) {
+                for (int k = 0; k < neighbors[j].msgs_to_send.size(); k++) {
+                    /*Если в очереди соседа нашелся id первого сообщения из общей очереди сообщений - убираем его*/
+                    if ((msgs[i].id == neighbors[j].msgs_to_send[k].msg_id)) {
+                        neighbors[j].msgs_to_send.erase(neighbors[j].msgs_to_send.begin() + k);
+                        break;
+                    }
+                }
+            }
+
+            /*Удаляем это сообщение из очереди*/
+            free(msgs[i].package);
+            msgs.erase(msgs.begin());
+        }
+    }
+
+    if (msgs.size() < MSG_QUEUE_MAX_SIZE) return SUCCESS;
+
+    return FAIL;
 }
