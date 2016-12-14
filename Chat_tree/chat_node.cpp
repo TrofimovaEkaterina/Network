@@ -479,6 +479,7 @@ int main(int argc, char * argv[]) {
                                             /*Если подтвердился коннект к ноде, помечаем ее как родителя и снимаем флаг рута*/
                                             if (msgs[i].package[0] == CONNECT_REQUEST) {
                                                 neighbors[sender_idx].is_parent = true;
+                                                fprintf(stderr,"Parent node confirmed the connection\nThe root flag is removed\n");
                                                 root = false;
                                             }
 
