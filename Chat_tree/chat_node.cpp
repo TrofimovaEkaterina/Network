@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "opt.h"
 
 #define SUCCESS 0
@@ -8,6 +10,7 @@ bool terminating_state = false;
 int service_info_offset = SIO; /*Зарезервированное место в пакете для типа сообщения и id*/
 
 std::vector<node> neighbors;
+std::vector<int> ids;
 std::vector<message> msgs;
 
 int queue_overload_processing();
@@ -480,7 +483,7 @@ int main(int argc, char * argv[]) {
                                             if (msgs[i].package[0] == CONNECT_REQUEST) {
                                                 neighbors[sender_idx].is_parent = true;
                                                 root = false;
-                                                fprintf(stderr,"Parent node confirmed the connection\nThe root flag is removed\n");
+                                                fprintf(stderr, "Parent node confirmed the connection\nThe root flag is removed\n");
                                             }
 
                                             /*Уменьшаем счетчик отправки сообщения (скольким нодам нужно переслать сообщение)*/
@@ -504,7 +507,14 @@ int main(int argc, char * argv[]) {
                                 {
                                     if ((sender_idx == -1) || terminating_state) break;
 
-                                    fprintf(stderr, "%s\n", (incoming_msg.package + service_info_offset));
+                                    if (std::find(ids.begin(), ids.end(), *(uint*) (incoming_msg.package + 1)) == ids.end()) {
+                                        fprintf(stderr, "%s\n", (incoming_msg.package + service_info_offset));
+                                        ids.push_back(*(uint*) (incoming_msg.package + 1));
+                                        
+                                        if(ids.size() > IDS_VEC_MAX_SIZE){
+                                            ids.erase(ids.begin());
+                                        }
+                                    }
 
                                     message to_resend;
                                     to_resend.package = (char *) calloc(sizeof (char), MSG_SIZE);
@@ -707,7 +717,7 @@ int queue_overload_processing() {
         if (msgs.size() < MSG_QUEUE_MAX_SIZE) {
             return SUCCESS;
         }
-        
+
         /*Если не сервисное сообщение можем удалить*/
         if (msgs[i].package[0] == MSG) {
 
