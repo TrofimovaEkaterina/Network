@@ -362,7 +362,7 @@ int main(int argc, char * argv[]) {
                         }
 
                         int attempt_to_get_msg = rand() % 100;
-                        //fprintf(stderr, "percent_of_losses = %d, rand = %d\n", percent_of_losses, attempt_to_get_msg);
+                        fprintf(stderr, "percent_of_losses = %d, rand = %d\n", percent_of_losses, attempt_to_get_msg);
 
                         /*Проверка "потери" датаграммы*/
                         if (attempt_to_get_msg >= percent_of_losses) {
@@ -387,7 +387,7 @@ int main(int argc, char * argv[]) {
                                     /*Если запрос пришел тогда, когда мы уже завершаем работу - не обрабатываем*/
                                     if (terminating_state) break;
 
-                                    //fprintf(stderr, "CONNECT_REQUEST from %d\n", addr.sin_port);
+                                    fprintf(stderr, "CONNECT_REQUEST from %d\n", addr.sin_port);
 
                                     uint id;
                                     memcpy(&id, incoming_msg.package + 1, sizeof (id));
@@ -441,7 +441,7 @@ int main(int argc, char * argv[]) {
                                     memcpy(&ip, (incoming_msg.package + service_info_offset), sizeof (ip));
                                     memcpy(&port, (incoming_msg.package + service_info_offset + sizeof (ip)), sizeof (port));
 
-                                    //fprintf(stderr, "CONNECT_TO from %d\n", port);
+                                    fprintf(stderr, "CONNECT_TO from %d\n", port);
 
                                     node new_node = create_node(ip, port, false);
                                     root = true;
@@ -461,7 +461,7 @@ int main(int argc, char * argv[]) {
                                     /*Непонятно от кого подтверждения не принимаем*/
                                     if (sender_idx == -1) break;
 
-                                    //fprintf(stderr, "ACK from %d\n", addr.sin_port);
+                                    fprintf(stderr, "ACK from %d\n", addr.sin_port);
 
                                     uint id;
                                     memcpy(&id, (incoming_msg.package + 1), sizeof (id));
@@ -479,8 +479,8 @@ int main(int argc, char * argv[]) {
                                             /*Если подтвердился коннект к ноде, помечаем ее как родителя и снимаем флаг рута*/
                                             if (msgs[i].package[0] == CONNECT_REQUEST) {
                                                 neighbors[sender_idx].is_parent = true;
-                                                fprintf(stderr,"Parent node confirmed the connection\nThe root flag is removed\n");
                                                 root = false;
+                                                fprintf(stderr,"Parent node confirmed the connection\nThe root flag is removed\n");
                                             }
 
                                             /*Уменьшаем счетчик отправки сообщения (скольким нодам нужно переслать сообщение)*/
@@ -541,7 +541,7 @@ int main(int argc, char * argv[]) {
                                 case DISCONNECT:
                                 {
                                     if (sender_idx == -1) break;
-                                    //fprintf(stderr, "DISCONNECT from %d\n", addr.sin_port);
+                                    fprintf(stderr, "DISCONNECT from %d\n", addr.sin_port);
 
                                     uint id;
                                     memcpy(&id, incoming_msg.package + 1, sizeof (id));
@@ -704,8 +704,10 @@ int queue_overload_processing() {
     for (int i = 0; i < msgs.size(); i++) {
 
         /*Если в пределах нормы - выходим из цикла*/
-        if (msgs.size() < MSG_QUEUE_MAX_SIZE) return SUCCESS;
-
+        if (msgs.size() < MSG_QUEUE_MAX_SIZE) {
+            return SUCCESS;
+        }
+        
         /*Если не сервисное сообщение можем удалить*/
         if (msgs[i].package[0] == MSG) {
 
