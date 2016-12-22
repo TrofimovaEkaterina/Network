@@ -91,8 +91,8 @@ void Socket::open() {
         ::close(fd);
     }
 
-
-
+    std::cout << "NEAR EXIT" << std::endl;
+            
     if (resPtr == NULL) {
         throw ConnectionError("Cannot establish connection to the server");
     }
@@ -154,7 +154,7 @@ void Socket::readAll(std::string *response) {
     }
 }
 
-bool Socket::readCharacter(char* buffer) {/////////////////
+bool Socket::readCharacter(char* buffer) {
     ssize_t bytesRead = read(buffer, 1);
 
     if (bytesRead > 0) {
@@ -163,14 +163,12 @@ bool Socket::readCharacter(char* buffer) {/////////////////
     return false;
 }
 
-size_t Socket::readLine(std::string* line) {////////////////////////////////
+size_t Socket::readLine(std::string* line) {
     char buffer[2] = "";
-    *line = "";
+    line->clear();
     size_t bytesRead = 0;
 
     if (readCharacter(&(buffer[1]))) {
-
-        std::cout << buffer[1];
 
         do {
             *line += buffer[0]; // add char to string

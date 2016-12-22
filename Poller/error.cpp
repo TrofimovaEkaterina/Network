@@ -15,7 +15,7 @@ Error::~Error() throw () {
 }
 
 const char* Error::what() const throw () {
-    std::string message;
+    std::string message = "";
 
     if (problem.length() > 0) {
         message += problem;

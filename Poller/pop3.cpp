@@ -57,6 +57,8 @@ void Pop3Session::open(std::string const& server, int port) {
     if (!welcomeMessage.status) {
         throw ServerError("Conection refused", welcomeMessage.statusMessage);
     }
+    
+    std::cout << welcomeMessage.statusMessage << std::endl;
 }
 
 void Pop3Session::close() {

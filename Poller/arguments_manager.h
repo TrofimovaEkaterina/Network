@@ -2,11 +2,15 @@
 #define _ARGUMENTS_MANAGER__H
 
 #include <string>
+#include <string.h>
 #include <unistd.h>
 
 #include "config.h"
 #include "error.h"
 
+enum PROTOCOL {
+    UNDECLARED, POP3, IMAP
+};
 
 class ArgumentsManager {
 private:
@@ -15,9 +19,10 @@ private:
     static const int MAX_PORT_RANGE = 65535;
     static const int DEFAULT_PORT = DEF_PORT;
 
-    int port;
+    PROTOCOL protocol;
     std::string username;
     std::string hostname;
+    int port;
     int messageId;
 
 public:
@@ -26,6 +31,10 @@ public:
 
     /* Parses arguments from argv and stores them */
     void parse(int argc, char **argv);
+
+    int getProtocol() const {
+        return protocol;
+    }
 
     int getPort() const {
         return port;
@@ -55,6 +64,7 @@ public:
 private:
     static int str2int(std::string numberStoredInString);
 
+    void setProtocol(char* optarg);
     void setPort(char* optarg);
     void setHostname(char* optarg);
     void setUsername(char* optarg);

@@ -13,13 +13,17 @@ void ArgumentsManager::parse(int argc, char **argv) {
     int option = 0;
 
     /* Defaults */
+    protocol = UNDECLARED;
     port = DEFAULT_PORT;
     hostname = "";
     username = "";
     messageId = 0;
 
-    while ((option = getopt(argc, argv, "h:p:u:")) != -1) {
+    while ((option = getopt(argc, argv, "P:h:p:u:")) != -1) {
         switch (option) {
+            case 'P': /* Protocol */
+                setProtocol(optarg);
+                break;
             case 'h': /* Hostname */
                 setHostname(optarg);
                 break;
@@ -45,6 +49,10 @@ void ArgumentsManager::parse(int argc, char **argv) {
 
 void ArgumentsManager::checkMandatoryArguments() const {
 
+    if (protocol == UNDECLARED) {
+        throw MissingArgumentError("-P");
+    }
+
     if (hostname.length() <= 0) {
         throw MissingArgumentError("-h");
     }
@@ -57,6 +65,21 @@ void ArgumentsManager::checkMandatoryArguments() const {
 int ArgumentsManager::str2int(std::string str) {
     return static_cast<int> (atoi(str.c_str()));
 }
+
+void ArgumentsManager::setProtocol(char* optarg) {
+    if (strcmp(optarg, "pop3") == 0) {
+        protocol = POP3;
+        return;
+    }
+
+    if (strcmp(optarg, "imap") == 0) {
+        protocol = IMAP;
+        return;
+    }
+
+    throw ArgumentDomainError("-P", "Unknown protocol. Protocols in use are: pop3, imap");
+
+};
 
 void ArgumentsManager::setPort(char* optarg) {
     port = str2int(std::string(optarg));
